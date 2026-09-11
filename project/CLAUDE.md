@@ -7,7 +7,7 @@
 - 다음 경로는 절대 수정하지 말 것. 통과하지 않으면 구현한 코드를 고치고, 명세와 불일치하면 멈추고 보고하라.
   - `backend/test/contract/**`, `front/test/contract/**`, `e2e/**`
 - 설정 파일(`CLAUDE.md`, `package.json`, `.eslintrc`, `.claudeignore`, `.husky/**`)은 절대 수정하지 말 것.
-- `--no-verify` 등 커밋 훅을 우회하는 행위를 하지 말 것.
+- `--no-verify`, `HARNESS_APPROVED=1` 등 커밋 훅을 우회하는 행위를 하지 말 것. `HARNESS_APPROVED`는 사용자만 쓴다.
 - 배정된 슬라이스 폴더 밖의 파일은 수정하지 말 것.
 - 다른 `feature/` 하위 폴더를 import하지 않는다. 의존 가능한 것은 `common/`과 `shared/`뿐이다.
 - 새 의존성 추가, 스키마·마이그레이션 변경은 단독으로 하지 말고 먼저 제안하라.

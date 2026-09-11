@@ -138,23 +138,58 @@ API 계약 테스트가 타입 공유의 빈자리를 메운다. 백엔드/프�
 
 ### 기계적 강제
 
-`CLAUDE.md`는 강제력이 없다. 실제로 막으려면 따로 장치가 필요. **우선순위는 `.claude/settings.json` > git hook > 린트 > CLAUDE.md.** settings는 툴 호출 시점에 거부하므로 세션이 "테스트를 고쳐서 통과시킨 뒤 보고"하는 것 자체를 막는다. git hook은 커밋 시점에만 막는 2차 방어선이다.
+`CLAUDE.md`는 강제력이 없다. 실제로 막으려면 따로 장치가 필요. 경계는 **두 등급**으로 나뉜다.
 
-| 대상 | 1차 (툴 호출 시점) | 2차 (커밋 시점) |
+| 등급 | 경로 | 규칙 | 해제 |
+|---|---|---|---|
+| **하드** | `test/contract/`, `e2e/`, 설정 파일 (`CLAUDE.md`, `package.json`, `.eslintrc`, `.claudeignore`, `.husky/`, `.claude/`) | 어떤 경우에도 세션이 수정 불가 | 없음. 사람이 훅 밖에서 처리 |
+| **소프트** | `src/common/`, `src/shared/` | 기본 차단. 세션은 멈추고 보고 | 사람이 판단 후 `HARNESS_APPROVED=1 git commit` + `approvals.md` 기록 |
+| (선택) | 다른 슬라이스 `feature/{other}/`, `test/unit/{other}/` | 배정 슬라이스 밖 수정 금지 | `HARNESS_SLICE` 환경변수로 훅이 판정. 미설정 시 검사 생략 |
+
+`common/shared`를 하드로 두지 않는 이유: 슬라이스를 구현하다 보면 DTO 필드 추가 같은 공용 변경이 실제로 필요해진다. 이걸 아예 막으면 하네스가 멈추고, 그냥 허용하면 병렬 슬라이스가 깨진다. 그래서 "차단하되 사람이 풀 수 있는" 등급이 필요하다.
+
+#### 강제 수단
+
+| 대상 | 커밋 시점 (`.husky/pre-commit`) | 툴 호출 시점 (`.claude/settings.json`, 선택) |
 |---|---|---|
-| 계약 테스트·E2E 수정 | `permissions.deny` Edit/Write | `.husky/pre-commit` diff 차단 |
-| 공용 레이어 변경 | `permissions.deny` Edit/Write | 동일 |
-| 설정 파일 수정 | `permissions.deny` Edit/Write | 동일 |
-| 훅 우회 (`--no-verify`) | `permissions.deny` Bash | — |
-| 다른 슬라이스 폴더 수정 | `PreToolUse` 훅 (`HARNESS_SLICE` 비교) | — |
-| 슬라이스 간 import | — | `.eslintrc` 린트 룰 |
-| 같은 파일 반복 수정 | `PostToolUse` 훅 카운트 → 경고 | — |
-| DTO 생략 | — | 응답 타입을 DTO로 제한 |
+| 하드 경로 | 차단 (`exit 2`) | `permissions.deny` Edit/Write |
+| 소프트 경로 | 차단 (`exit 1`). `HARNESS_APPROVED=1`이면 통과 | `PreToolUse` 훅 → `permissionDecision: "ask"` (승인 프롬프트) |
+| 다른 슬라이스 | — | `PreToolUse` 훅 + `HARNESS_SLICE` 비교 |
+| 훅 우회 (`--no-verify`, `HARNESS_APPROVED=`) | — | `permissions.deny` Bash |
+| 슬라이스 간 import | `.eslintrc` 린트 룰 | — |
 | 실행 방법 일관성 | `package.json` 스크립트 고정 | — |
+
+pre-commit은 git 기준 2차 방어선이다. exit 1/2는 git 입장에선 같지만(0이 아니면 차단) 로그에서 등급을 구분하기 위한 컨벤션이다. `HARNESS_APPROVED`는 세션도 붙일 수 있으므로 소프트 등급이고, `CLAUDE.md`에 "사용자만 쓴다"고 명시한다.
+
+`.claude/settings.json`은 툴 호출 자체를 거부하므로 "테스트를 고쳐서 통과시킨 뒤 보고"하는 것까지 막는다. 필요하면 추가한다:
+
+```json
+{
+  "permissions": {
+    "deny": [
+      "Edit(backend/test/contract/**)", "Write(backend/test/contract/**)",
+      "Edit(front/test/contract/**)",   "Write(front/test/contract/**)",
+      "Edit(e2e/**)",                   "Write(e2e/**)",
+      "Edit(CLAUDE.md)", "Edit(package.json)", "Edit(.eslintrc)",
+      "Edit(.claudeignore)", "Edit(.husky/**)", "Edit(.claude/**)",
+      "Bash(git commit --no-verify*)", "Bash(git commit -n *)",
+      "Bash(HARNESS_APPROVED=*)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      { "matcher": "Edit|Write",
+        "hooks": [{ "type": "command", "command": ".claude/hooks/check-slice-boundary.sh" }] }
+    ]
+  }
+}
+```
+
+`check-slice-boundary.sh`는 `file_path`가 `src/common/`·`src/shared/`면 `ask`를 반환해 사용자 승인 프롬프트를 띄우고, `HARNESS_SLICE`가 설정된 경우 `feature/{other}/`·`test/unit/{other}/`도 `ask`로 돌린다.
 
 #### 세션 쓰기 범위
 
-세션은 **자기 슬라이스 폴더 + 자기 단위 테스트 폴더**만 쓸 수 있다. `order-cancel` 세션 기준:
+`order-cancel` 세션 기준:
 
 ```
 backend/src/feature/order-cancel/**     O
@@ -162,59 +197,20 @@ front/src/feature/order-cancel/**       O
 backend/test/unit/order-cancel/**       O   (TDD)
 front/test/unit/order-cancel/**         O
 
-backend/src/feature/order-create/**     X   다른 슬라이스
-backend/src/common/**, shared/**        X   공용 레이어
-front/src/common/**, shared/**          X
-backend/test/contract/**, e2e/**        X   동결
+backend/src/common/**, shared/**        △   소프트 — 멈추고 보고, 승인 시 가능
+front/src/common/**, shared/**          △
+backend/src/feature/order-create/**     △   다른 슬라이스 (HARNESS_SLICE 설정 시 검사)
+
+backend/test/contract/**, e2e/**        X   하드
 front/test/contract/**                  X
 CLAUDE.md, package.json, .eslintrc,
-.claudeignore, .husky/**, .claude/**    X   설정
+.claudeignore, .husky/**, .claude/**    X
 ```
-
-막는 대상은 두 종류로 나뉜다.
-
-- **고정 경로** (common, shared, contract, e2e, 설정) — 모든 세션 공통. `permissions.deny`로 끝.
-- **다른 슬라이스 폴더** — 세션마다 다르므로 settings 파일 하나로 고정할 수 없다. `PreToolUse` 훅이 `HARNESS_SLICE` 환경변수(또는 워크트리별 `.claude/settings.local.json`)를 읽어 `feature/` 아래인데 배정 슬라이스가 아닌 경로를 거부한다.
-
-`test/unit/`을 `test/unit/{slice}/`로 슬라이스별로 나누는 이유도 같다. 폴더가 나뉘어 있지 않으면 다른 슬라이스의 단위 테스트를 건드릴 수 있다.
-
-#### `.claude/settings.json` 예시
-
-```json
-{
-  "permissions": {
-    "deny": [
-      "Edit(backend/src/common/**)",   "Write(backend/src/common/**)",
-      "Edit(backend/src/shared/**)",   "Write(backend/src/shared/**)",
-      "Edit(front/src/common/**)",     "Write(front/src/common/**)",
-      "Edit(front/src/shared/**)",     "Write(front/src/shared/**)",
-      "Edit(backend/test/contract/**)","Write(backend/test/contract/**)",
-      "Edit(front/test/contract/**)",  "Write(front/test/contract/**)",
-      "Edit(e2e/**)",                  "Write(e2e/**)",
-      "Edit(CLAUDE.md)",               "Edit(package.json)",
-      "Edit(.eslintrc)",               "Edit(.claudeignore)",
-      "Edit(.husky/**)",               "Edit(.claude/**)",
-      "Bash(git commit --no-verify*)", "Bash(git commit -n *)",
-      "Bash(rm -rf *)"
-    ]
-  },
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Edit|Write",
-        "hooks": [{ "type": "command", "command": ".claude/hooks/check-slice-boundary.sh" }]
-      }
-    ]
-  }
-}
-```
-
-`check-slice-boundary.sh`는 stdin으로 받은 `file_path`가 `*/feature/{name}/**` 또는 `*/test/unit/{name}/**`이고 `{name} != $HARNESS_SLICE`이면 exit 2로 거부한다. 세션은 `HARNESS_SLICE=order-cancel claude`처럼 슬라이스명을 주입해 연다.
 
 #### 남는 구멍
 
-- 계약 테스트 **삭제**·**이동**은 Edit/Write deny로 안 잡힌다. `Bash(rm *)`, `Bash(mv *)`, `Bash(git rm *)`를 deny하거나 pre-commit에서 삭제 diff를 검사한다.
-- `HARNESS_APPROVED=1` 같은 우회 키가 훅 파일에 있으면 세션이 읽고 쓸 수 있다. 우회 키는 레포 밖에 두거나, 승인된 변경은 사람이 직접 커밋한다.
+- 계약 테스트 **삭제**·**이동**은 Edit/Write deny로 안 잡힌다. pre-commit은 `--name-only`라 삭제도 잡지만, settings로 막으려면 `Bash(rm *)`, `Bash(git rm *)`, `Bash(mv *)`도 deny해야 한다.
+- `npm run test`가 전체 테스트를 돌리면 다른 슬라이스의 깨진 테스트를 고치러 갈 수 있다. 자기 슬라이스 범위만 돌리는 스크립트(`test -- $HARNESS_SLICE`)를 두는 게 낫다.
 - settings·훅은 Claude Code 기준이다. 다른 에이전트를 쓰면 같은 규칙을 그 도구의 권한 체계로 옮겨야 하며, git hook과 린트만 도구 무관하게 동작한다.
 
 ---
