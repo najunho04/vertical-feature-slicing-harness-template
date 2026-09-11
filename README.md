@@ -15,7 +15,7 @@ cd project && make setup     # git 훅 연결. 1회
 | # | 파일 | 할 것 |
 |---|---|---|
 | 1 | [`project/Makefile`](project/Makefile) | `dev` `test` `test-slice` `test-e2e` `lint` 5개의 `TODO`를 스택 명령으로 교체 |
-| 2 | 린트 룰 파일 (스택별) | "다른 `feature/` 폴더 import 금지" 규칙 1개 작성 → `make lint`에 연결 |
+| 2 | 린트 룰 파일 (스택별) | "다른 `feature/` 폴더 import 금지" 규칙 1개 작성. 실행 명령은 1번의 `lint:` 밑에 |
 
 **이게 스택 커스텀의 전부다.** 나머지(`CLAUDE.md`, `.claude/settings.json`, `.githooks/`, 디렉토리 구조)는 경로 기반이라 언어 무관. 스택별 예시는 [project/docs/stack-guide.md](project/docs/stack-guide.md).
 

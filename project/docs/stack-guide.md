@@ -33,7 +33,7 @@
 | Go | 패키지 구조 | `feature/{slice}/internal/` — 컴파일러가 차단 |
 | Rust | 크레이트 분리 | 슬라이스별 크레이트. `Cargo.toml`에 없으면 컴파일 불가 |
 
-만든 파일을 `make lint`에 연결한다.
+만든 룰을 실행하는 명령을 `Makefile`의 `lint:` 타겟 밑에 쓴다. 예: `./gradlew archTest`, `npx eslint .`, `lint-imports`.
 
 ## 계약 테스트
 
