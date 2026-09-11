@@ -1,0 +1,28 @@
+{
+  "root": true,
+  "rules": {
+    "no-restricted-imports": ["error", {
+      "patterns": [
+        {
+          "group": ["**/feature/*", "**/feature/*/**", "@feature/*"],
+          "message": "슬라이스 간 import 금지. 의존 가능한 것은 common/ 과 shared/ 뿐이다."
+        }
+      ]
+    }]
+  },
+  "overrides": [
+    {
+      "files": ["backend/src/feature/*/**", "front/src/feature/*/**"],
+      "rules": {
+        "no-restricted-imports": ["error", {
+          "patterns": [
+            {
+              "group": ["../*/**", "../../feature/**"],
+              "message": "다른 슬라이스 폴더를 import하지 않는다."
+            }
+          ]
+        }]
+      }
+    }
+  ]
+}
