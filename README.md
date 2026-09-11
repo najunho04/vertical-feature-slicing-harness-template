@@ -2,7 +2,31 @@
 
 > "I/O를 중심으로 기능마다 하나의 Function처럼 슬라이스한 Feature"를 기반으로 프로젝트를 구현하기 위한 AI 코딩 하네스 템플릿.
 
-이 레포는 **템플릿**입니다. `Use this template`으로 복제한 뒤 `project/`를 실제 프로젝트에 맞게 채우고, `project-all-docs/`에 설계 문서를 작성해 사용합니다.
+이 레포는 **템플릿**입니다. `Use this template`으로 복제해서 씁니다.
+
+## 시작하기
+
+clone 직후 **이 두 가지를 먼저 확정**한다. 이걸 안 하면 세션이 실행 방법을 추측하고, import 경계가 안 막힌다.
+
+```bash
+cd project && make setup     # git 훅 연결. 1회
+```
+
+| # | 파일 | 할 것 |
+|---|---|---|
+| 1 | [`project/Makefile`](project/Makefile) | `dev` `test` `test-slice` `test-e2e` `lint` 5개의 `TODO`를 스택 명령으로 교체 |
+| 2 | 린트 룰 파일 (스택별) | "다른 `feature/` 폴더 import 금지" 규칙 1개 작성 → `make lint`에 연결 |
+
+**이게 스택 커스텀의 전부다.** 나머지(`CLAUDE.md`, `.claude/settings.json`, `.githooks/`, 디렉토리 구조)는 경로 기반이라 언어 무관. 스택별 예시는 [project/docs/stack-guide.md](project/docs/stack-guide.md).
+
+그 다음:
+
+1. `project-all-docs/`에 `api.md`, `erd.md`, `feature-graph.md` 작성 (사람)
+2. 도출된 엔티티·DTO·enum을 `project/*/src/common/`에 코드로 내려놓기
+3. 슬라이스마다 `project-all-docs/context-card/_template.md` 복사해 카드 작성. **빈칸이 남으면 설계가 덜 된 것**
+4. `project/`에서 세션 열기 → [`test-session.md`](project/docs/prompts/test-session.md) 프롬프트 + 카드로 계약 테스트 작성 → 승인 → 동결
+5. [`implementation-session.md`](project/docs/prompts/implementation-session.md) 프롬프트 + 카드로 구현 세션
+6. `project-all-docs/checklist.md` 전부 통과하면 머지
 
 ---
 
@@ -78,6 +102,7 @@
   /docs
     /generated                     # OpenAPI·ERD 생성물 (claudeignore 대상)
     /prompts                       # 테스트 세션 / 구현 세션 프롬프트 템플릿
+    stack-guide.md                 # 스택별 Makefile·린트 예시
 ```
 
 **핵심은 두 가지.** `common/`·`shared/`는 세션 쓰기 금지, `test/contract/`는 실구현 전에 컨텍스트 카드를 보고 승인 후 동결. 나머지는 프로젝트에 맞게 조정.
@@ -138,62 +163,26 @@ API 계약 테스트가 타입 공유의 빈자리를 메운다. 백엔드/프�
 
 ### 기계적 강제
 
-`CLAUDE.md`는 강제력이 없다. 실제로 막으려면 따로 장치가 필요. 경계는 **두 등급**으로 나뉘고, 툴 호출 시점(`.claude/settings.json`)과 커밋 시점(`.githooks/pre-commit`)에서 같은 등급으로 막는다.
+`CLAUDE.md`는 강제력이 없다. 실제 차단은 두 지점, 두 등급.
 
-| 등급 | 경로 | 툴 호출 시점 | 커밋 시점 | 해제 |
-|---|---|---|---|---|
-| **하드** | `test/contract/` | `permissions.deny` — 프롬프트 없이 거부 | `exit 2` — 항상 차단 | 없음. 사람이 세션·훅 밖에서 처리 |
-| **소프트** | `src/common/`, `src/shared/`, `e2e/`, 설정 파일 (`CLAUDE.md`, `Makefile`, `.claudeignore`, `.githooks/`, `.claude/`) | `permissions.ask` — 사용자 승인 프롬프트 | `exit 1` — `HARNESS_APPROVED=1`이면 통과 | 사용자가 프롬프트에서 승인 → `HARNESS_APPROVED=1 git commit` → `approvals.md` 기록 |
-| (선택) | 다른 슬라이스 `feature/{other}/`, `test/unit/{other}/` | `PreToolUse` 훅 + `HARNESS_SLICE` | — | 미설정 시 검사 생략 |
+| 등급 | 경로 | 툴 호출 시점 ([`.claude/settings.json`](project/.claude/settings.json)) | 커밋 시점 ([`.githooks/pre-commit`](project/.githooks/pre-commit)) |
+|---|---|---|---|
+| **하드** | `test/contract/` | `deny` — 프롬프트 없이 거부. 삭제·이동(`rm`/`mv`)도 거부 | 항상 차단. 해제 없음 |
+| **소프트** | `src/common/`, `src/shared/`, `e2e/`, 설정 파일 | `ask` — 사용자 승인 프롬프트 | 차단. `HARNESS_APPROVED=1 git commit`이면 통과 → `approvals.md` 기록 |
 
-`deny`와 `ask`의 차이:
+- 계약 테스트만 하드인 이유: 채점 기준이라 세션 안에서 풀리면 "동결"이 아니게 된다.
+- 나머지가 소프트인 이유: DTO 필드 추가 같은 공용 변경은 실제로 필요해진다. 막되 사람이 풀 수 있어야 한다.
+- 훅 우회(`--no-verify`, `HARNESS_APPROVED=`)도 `ask`. 세션이 시도하면 사용자에게 보인다.
+- `--dangerously-skip-permissions`는 `ask`를 전부 무력화하므로 쓰지 않는다.
 
-| | deny | ask |
-|---|---|---|
-| 세션이 수정 시도 | 즉시 거부 | 사용자에게 승인 프롬프트 |
-| 사용자 승인 | 불가 (settings 수정 필요) | 그 자리에서 y/n |
-| auto-accept 모드 | 거부 | 그래도 프롬프트 |
-| `--dangerously-skip-permissions` | 거부 유지 | 프롬프트 생략됨 |
-
-계약 테스트만 `deny`인 이유: 이건 채점 기준이라 세션 안에서 풀리는 순간 "동결"이 아니게 된다. 나머지는 슬라이스를 구현하다 보면 실제로 변경이 필요해지므로(DTO 필드 추가 등) "차단하되 사람이 풀 수 있는" 등급에 둔다. 훅 우회 명령(`--no-verify`, `HARNESS_APPROVED=`)도 `ask`라 세션이 시도하면 사용자에게 보인다.
-
-`.claude/settings.json`은 [project/.claude/settings.json](project/.claude/settings.json)에 들어 있다. pre-commit은 git 기준 2차 방어선이며, exit 1/2는 git 입장에선 같지만(0이 아니면 차단) 로그에서 등급을 구분하기 위한 컨벤션이다.
-
-그 외 강제 수단:
-
-| 대상 | 수단 |
-|---|---|
-| 계약 테스트 삭제·이동 | `Bash(rm/git rm/mv *contract*)` deny |
-| 슬라이스 간 import | 스택별 린트 룰 (아래 "스택 커스텀" 참고) |
-| 실행 방법 일관성 | `Makefile` 타겟 고정 |
-
-#### 세션 쓰기 범위
-
-`order-cancel` 세션 기준:
+**세션 쓰기 범위** — `order-cancel` 세션 기준:
 
 ```
-backend/src/feature/order-cancel/**     O
-front/src/feature/order-cancel/**       O
-backend/test/unit/order-cancel/**       O   (TDD)
-front/test/unit/order-cancel/**         O
-
-backend/src/common/**, shared/**        △   ask — 사용자 승인 시 가능
-front/src/common/**, shared/**          △
-e2e/**                                  △
-CLAUDE.md, Makefile, .claudeignore,
-.githooks/**, .claude/**                △
-backend/src/feature/order-create/**     △   다른 슬라이스 (HARNESS_SLICE 설정 시 검사)
-
-backend/test/contract/**                X   deny — 세션 안에서 해제 불가
-front/test/contract/**                  X
+feature/order-cancel/**, test/unit/order-cancel/**   O
+src/common/**, src/shared/**, e2e/**, 설정 파일        △  ask
+feature/order-create/** (다른 슬라이스)                △  HARNESS_SLICE 설정 시 검사 (선택)
+test/contract/**                                     X  deny
 ```
-
-#### 남는 구멍
-
-- `Bash(rm *contract*)` deny는 경로에 `contract`가 들어갈 때만 잡는다. `cd backend/test && rm -r contract`처럼 우회하면 못 잡는다. pre-commit이 삭제 diff를 잡으므로 커밋 시점에서는 걸린다.
-- `make test`가 전체 테스트를 돌리면 다른 슬라이스의 깨진 테스트를 고치러 갈 수 있다. 세션에는 `SLICE=… make test-slice`만 쓰게 한다 (CLAUDE.md에 명시됨).
-- `--dangerously-skip-permissions`로 세션을 열면 `ask`가 전부 무력화된다. 이 하네스에서는 쓰지 않는다.
-- settings·훅은 Claude Code 기준이다. 다른 에이전트를 쓰면 같은 규칙을 그 도구의 권한 체계로 옮겨야 하며, git hook과 린트만 도구 무관하게 동작한다.
 
 ---
 
@@ -231,61 +220,6 @@ front/test/contract/**                  X
 3. **같은 타입 쓰는 다른 슬라이스 확인**
 4. 끝난 슬라이스면 재작업 여부 결정
 5. 컨텍스트 카드 갱신 후 세션 재개 (`project-all-docs/approvals.md`에 기록)
-
----
-
-## 템플릿 사용법
-
-0. clone 후 `project/`에서 `make setup` 1회 (git 훅 연결). 아래 "스택 커스텀"을 먼저 끝낸다.
-1. `project-all-docs/api.md`, `erd.md`, `feature-graph.md`를 작성한다. (사람)
-2. 도출된 엔티티·DTO·enum을 `project/backend/src/common/`, `project/front/src/common/`에 코드로 내려놓는다.
-3. 슬라이스마다 `project-all-docs/context-card/_template.md`를 복사해 카드를 작성한다. **빈칸이 남으면 설계가 덜 됐다는 신호.**
-4. `project/`에서 세션을 열고 `project/docs/prompts/test-session.md` 프롬프트 + 카드로 계약 테스트를 작성 → 승인 → 동결.
-5. `project/docs/prompts/implementation-session.md` 프롬프트 + 카드로 구현 세션을 연다.
-6. `project-all-docs/checklist.md`를 모두 통과하면 머지.
-
----
-
-## 스택 커스텀
-
-하네스는 언어 무관이다. `CLAUDE.md`, `.claude/settings.json`, `.githooks/`, 디렉토리 구조, 컨텍스트 카드, 프롬프트는 그대로 쓴다. **스택에 맞춰 손대야 하는 건 세 곳**이다.
-
-| 파일 | 역할 | 해야 할 것 |
-|---|---|---|
-| `Makefile` | 실행 명령 고정 | 타겟 5개(`dev`, `test`, `test-slice`, `test-e2e`, `lint`)의 `TODO`를 실제 명령으로 교체. 타겟 이름은 바꾸지 않는다 (CLAUDE.md가 참조) |
-| 린트 설정 | 슬라이스 간 import 차단 | 스택별 도구로 `feature/{a}` → `feature/{b}` import를 에러로 만든다. `make lint`에 연결 |
-| `.githooks/pre-commit` | 경로 목록 | 디렉토리 구조를 바꿨다면 `HARD_PATHS`/`SOFT_PATHS` 갱신. 구조 그대로면 수정 불필요 |
-
-### 슬라이스 간 import 차단 — 스택별 수단
-
-| 스택 | 도구 | 규칙 예 |
-|---|---|---|
-| TypeScript / JS | `eslint` `no-restricted-imports` 또는 `eslint-plugin-boundaries` | `feature/*` 내부에서 `../*` 및 다른 `feature/*` 경로 금지 |
-| Java / Kotlin (Spring) | ArchUnit | `noClasses().that().resideInAPackage("..feature.(*)..").should().dependOnClassesThat().resideInAPackage("..feature..")` + 같은 슬라이스 예외 |
-| Python | `import-linter` | `[importlinter:contract:slices]` `type = independence` `modules = feature.*` |
-| Go | `depguard` 또는 internal 패키지 규칙 | `feature/{slice}/internal/` 구조로 컴파일러가 차단 |
-| Rust | 크레이트 분리 | 슬라이스를 별도 크레이트로 두면 `Cargo.toml`에 없는 의존은 컴파일 불가 |
-
-### `test-slice` 타겟
-
-병렬 세션에서 가장 자주 터지는 게 "전체 테스트 돌리다 남의 깨진 테스트를 고치러 가는" 경우다. `SLICE=order-cancel make test-slice`가 자기 슬라이스 테스트만 돌리도록 만든다:
-
-| 스택 | 예 |
-|---|---|
-| Jest / Vitest | `npx vitest run feature/$(SLICE) test/unit/$(SLICE)` |
-| Gradle | `./gradlew test --tests "*feature.$(SLICE)*"` |
-| pytest | `pytest backend/test/unit/$(SLICE) -k $(SLICE)` |
-| Go | `go test ./backend/feature/$(SLICE)/...` |
-
-### 계약 테스트 프레임워크
-
-`test/contract/`는 **백엔드 응답 형태**를 검증한다. 백엔드 테스트 프레임워크로 HTTP 호출 → 응답 DTO 필드·타입 검증. 프론트와 언어가 다르면 이 테스트가 타입 공유를 대신하므로, 응답 스키마 검증(JSON Schema, zod, Pydantic 등)을 넣는 게 좋다.
-
-### 손대지 않아도 되는 것
-
-- `.claude/settings.json` — 경로가 그대로면 그대로. Claude Code 외 에이전트를 쓰면 이 파일의 deny/ask를 그 도구의 권한 체계로 옮긴다.
-- `.githooks/pre-commit` — 순수 셸 스크립트. `make setup`이 `git config core.hooksPath .githooks`로 연결한다. husky 등 의존성 없음.
-- `.claudeignore`, `CLAUDE.md`, `docs/prompts/` — 스택 무관.
 
 ---
 
