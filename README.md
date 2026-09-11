@@ -174,6 +174,7 @@ API 계약 테스트가 타입 공유의 빈자리를 메운다. 백엔드/프�
 - 나머지가 소프트인 이유: DTO 필드 추가 같은 공용 변경은 실제로 필요해진다. 막되 사람이 풀 수 있어야 한다.
 - 훅 우회(`--no-verify`, `HARNESS_APPROVED=`)도 `ask`. 세션이 시도하면 사용자에게 보인다.
 - `--dangerously-skip-permissions`는 `ask`를 전부 무력화하므로 쓰지 않는다.
+- 슬라이스 간 import는 pre-commit이 `make lint`로 검사한다. `HARNESS_APPROVED`로도 안 풀린다. `lint` 타겟이 `TODO`인 동안은 경고만 낸다.
 
 **세션 쓰기 범위** — `order-cancel` 세션 기준:
 

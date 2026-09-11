@@ -61,4 +61,13 @@ if [ -n "$SOFT_HITS" ]; then
   exit 1
 fi
 
+# 슬라이스 간 import 차단. HARNESS_APPROVED 로도 풀리지 않는다 (승인 대상이 아니라 설계 오류).
+# Makefile 의 lint 타겟이 아직 TODO 면 경고만 내고 통과시킨다.
+if make -s -n -C "$PROJECT_DIR" lint 2>/dev/null | grep -q TODO; then
+  echo "[harness] lint 타겟 미구현. Makefile 을 채우면 커밋 시점에 강제됩니다."
+elif ! make -s -C "$PROJECT_DIR" lint; then
+  echo "[harness] 린트 실패. 슬라이스 간 import 위반을 확인하세요."
+  exit 1
+fi
+
 exit 0
