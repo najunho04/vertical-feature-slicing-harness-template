@@ -1,0 +1,31 @@
+{
+  "permissions": {
+    "deny": [
+      "Edit(backend/test/contract/**)",
+      "Write(backend/test/contract/**)",
+      "Edit(front/test/contract/**)",
+      "Write(front/test/contract/**)"
+    ],
+    "ask": [
+      "Edit(e2e/**)",
+      "Write(e2e/**)",
+      "Edit(backend/src/common/**)",
+      "Write(backend/src/common/**)",
+      "Edit(backend/src/shared/**)",
+      "Write(backend/src/shared/**)",
+      "Edit(front/src/common/**)",
+      "Write(front/src/common/**)",
+      "Edit(front/src/shared/**)",
+      "Write(front/src/shared/**)",
+      "Edit(CLAUDE.md)",
+      "Edit(package.json)",
+      "Edit(.eslintrc)",
+      "Edit(.claudeignore)",
+      "Edit(.husky/**)",
+      "Edit(.claude/**)",
+      "Bash(git commit --no-verify*)",
+      "Bash(git commit -n *)",
+      "Bash(HARNESS_APPROVED=*)"
+    ]
+  }
+}

@@ -1,26 +1,26 @@
 #!/usr/bin/env sh
 # 커밋 시점 경계 검사. 두 등급으로 나뉜다.
-#   하드 (exit 2): 동결 경로. 어떤 경우에도 커밋 불가. 변경이 필요하면 사람이 훅 밖에서 처리한다.
-#   소프트 (exit 1): 공용 레이어. 기본 차단. 사람이 승인한 경우 HARNESS_APPROVED=1 로 커밋하고
+#   하드 (exit 2): 계약 테스트. 어떤 경우에도 커밋 불가. 변경이 필요하면 사람이 훅 밖에서 처리한다.
+#   소프트 (exit 1): 공용 레이어·E2E·설정 파일. 기본 차단. 사람이 승인한 경우 HARNESS_APPROVED=1 로 커밋하고
 #                    project-all-docs/approvals.md 에 기록한다. 이 변수는 사용자만 쓴다.
 
 HARD_PATHS="
 backend/test/contract/
 front/test/contract/
+"
+
+SOFT_PATHS="
 e2e/
+backend/src/common/
+backend/src/shared/
+front/src/common/
+front/src/shared/
 CLAUDE.md
 package.json
 .eslintrc
 .claudeignore
 .husky/
 .claude/
-"
-
-SOFT_PATHS="
-backend/src/common/
-backend/src/shared/
-front/src/common/
-front/src/shared/
 "
 
 STAGED=$(git diff --cached --name-only)
@@ -43,11 +43,11 @@ fi
 SOFT_HITS=$(match_paths "$SOFT_PATHS")
 if [ -n "$SOFT_HITS" ]; then
   if [ "$HARNESS_APPROVED" = "1" ]; then
-    echo "[harness] HARNESS_APPROVED=1 — 공용 레이어 변경 승인됨. approvals.md 에 기록할 것:"
+    echo "[harness] HARNESS_APPROVED=1 — 보호 경로 변경 승인됨. approvals.md 에 기록할 것:"
     echo "$SOFT_HITS"
     exit 0
   fi
-  echo "[harness] 공용 레이어 변경이 감지되어 커밋을 차단합니다 (소프트):"
+  echo "[harness] 보호 경로 변경이 감지되어 커밋을 차단합니다 (소프트):"
   echo "$SOFT_HITS"
   echo ""
   echo "코드를 작성하지 말고 멈춰서 필요한 변경 사항을 사용자에게 설명하세요."

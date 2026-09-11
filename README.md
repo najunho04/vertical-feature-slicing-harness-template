@@ -41,7 +41,8 @@
   package.json                     # dev / test / test:e2e (쓰기 X)
   .eslintrc                        # 슬라이스 간 import 차단 (쓰기 X)
   .claudeignore                    # docs/generated 제외 (쓰기 X)
-  .husky/pre-commit                # 테스트·공용 레이어 임의 수정 차단 (쓰기 X)
+  .husky/pre-commit                # 커밋 시점 경계 검사 (쓰기 X)
+  .claude/settings.json            # 툴 호출 시점 경계 검사: deny / ask (쓰기 X)
   /backend
     /src
       /common                      # 타입만. 로직 X (쓰기 X)
@@ -138,54 +139,33 @@ API 계약 테스트가 타입 공유의 빈자리를 메운다. 백엔드/프�
 
 ### 기계적 강제
 
-`CLAUDE.md`는 강제력이 없다. 실제로 막으려면 따로 장치가 필요. 경계는 **두 등급**으로 나뉜다.
+`CLAUDE.md`는 강제력이 없다. 실제로 막으려면 따로 장치가 필요. 경계는 **두 등급**으로 나뉘고, 툴 호출 시점(`.claude/settings.json`)과 커밋 시점(`.husky/pre-commit`)에서 같은 등급으로 막는다.
 
-| 등급 | 경로 | 규칙 | 해제 |
-|---|---|---|---|
-| **하드** | `test/contract/`, `e2e/`, 설정 파일 (`CLAUDE.md`, `package.json`, `.eslintrc`, `.claudeignore`, `.husky/`, `.claude/`) | 어떤 경우에도 세션이 수정 불가 | 없음. 사람이 훅 밖에서 처리 |
-| **소프트** | `src/common/`, `src/shared/` | 기본 차단. 세션은 멈추고 보고 | 사람이 판단 후 `HARNESS_APPROVED=1 git commit` + `approvals.md` 기록 |
-| (선택) | 다른 슬라이스 `feature/{other}/`, `test/unit/{other}/` | 배정 슬라이스 밖 수정 금지 | `HARNESS_SLICE` 환경변수로 훅이 판정. 미설정 시 검사 생략 |
+| 등급 | 경로 | 툴 호출 시점 | 커밋 시점 | 해제 |
+|---|---|---|---|---|
+| **하드** | `test/contract/` | `permissions.deny` — 프롬프트 없이 거부 | `exit 2` — 항상 차단 | 없음. 사람이 세션·훅 밖에서 처리 |
+| **소프트** | `src/common/`, `src/shared/`, `e2e/`, 설정 파일 (`CLAUDE.md`, `package.json`, `.eslintrc`, `.claudeignore`, `.husky/`, `.claude/`) | `permissions.ask` — 사용자 승인 프롬프트 | `exit 1` — `HARNESS_APPROVED=1`이면 통과 | 사용자가 프롬프트에서 승인 → `HARNESS_APPROVED=1 git commit` → `approvals.md` 기록 |
+| (선택) | 다른 슬라이스 `feature/{other}/`, `test/unit/{other}/` | `PreToolUse` 훅 + `HARNESS_SLICE` | — | 미설정 시 검사 생략 |
 
-`common/shared`를 하드로 두지 않는 이유: 슬라이스를 구현하다 보면 DTO 필드 추가 같은 공용 변경이 실제로 필요해진다. 이걸 아예 막으면 하네스가 멈추고, 그냥 허용하면 병렬 슬라이스가 깨진다. 그래서 "차단하되 사람이 풀 수 있는" 등급이 필요하다.
+`deny`와 `ask`의 차이:
 
-#### 강제 수단
-
-| 대상 | 커밋 시점 (`.husky/pre-commit`) | 툴 호출 시점 (`.claude/settings.json`, 선택) |
+| | deny | ask |
 |---|---|---|
-| 하드 경로 | 차단 (`exit 2`) | `permissions.deny` Edit/Write |
-| 소프트 경로 | 차단 (`exit 1`). `HARNESS_APPROVED=1`이면 통과 | `PreToolUse` 훅 → `permissionDecision: "ask"` (승인 프롬프트) |
-| 다른 슬라이스 | — | `PreToolUse` 훅 + `HARNESS_SLICE` 비교 |
-| 훅 우회 (`--no-verify`, `HARNESS_APPROVED=`) | — | `permissions.deny` Bash |
-| 슬라이스 간 import | `.eslintrc` 린트 룰 | — |
-| 실행 방법 일관성 | `package.json` 스크립트 고정 | — |
+| 세션이 수정 시도 | 즉시 거부 | 사용자에게 승인 프롬프트 |
+| 사용자 승인 | 불가 (settings 수정 필요) | 그 자리에서 y/n |
+| auto-accept 모드 | 거부 | 그래도 프롬프트 |
+| `--dangerously-skip-permissions` | 거부 유지 | 프롬프트 생략됨 |
 
-pre-commit은 git 기준 2차 방어선이다. exit 1/2는 git 입장에선 같지만(0이 아니면 차단) 로그에서 등급을 구분하기 위한 컨벤션이다. `HARNESS_APPROVED`는 세션도 붙일 수 있으므로 소프트 등급이고, `CLAUDE.md`에 "사용자만 쓴다"고 명시한다.
+계약 테스트만 `deny`인 이유: 이건 채점 기준이라 세션 안에서 풀리는 순간 "동결"이 아니게 된다. 나머지는 슬라이스를 구현하다 보면 실제로 변경이 필요해지므로(DTO 필드 추가 등) "차단하되 사람이 풀 수 있는" 등급에 둔다. 훅 우회 명령(`--no-verify`, `HARNESS_APPROVED=`)도 `ask`라 세션이 시도하면 사용자에게 보인다.
 
-`.claude/settings.json`은 툴 호출 자체를 거부하므로 "테스트를 고쳐서 통과시킨 뒤 보고"하는 것까지 막는다. 필요하면 추가한다:
+`.claude/settings.json`은 [project/.claude/settings.json](project/.claude/settings.json)에 들어 있다. pre-commit은 git 기준 2차 방어선이며, exit 1/2는 git 입장에선 같지만(0이 아니면 차단) 로그에서 등급을 구분하기 위한 컨벤션이다.
 
-```json
-{
-  "permissions": {
-    "deny": [
-      "Edit(backend/test/contract/**)", "Write(backend/test/contract/**)",
-      "Edit(front/test/contract/**)",   "Write(front/test/contract/**)",
-      "Edit(e2e/**)",                   "Write(e2e/**)",
-      "Edit(CLAUDE.md)", "Edit(package.json)", "Edit(.eslintrc)",
-      "Edit(.claudeignore)", "Edit(.husky/**)", "Edit(.claude/**)",
-      "Bash(git commit --no-verify*)", "Bash(git commit -n *)",
-      "Bash(HARNESS_APPROVED=*)"
-    ]
-  },
-  "hooks": {
-    "PreToolUse": [
-      { "matcher": "Edit|Write",
-        "hooks": [{ "type": "command", "command": ".claude/hooks/check-slice-boundary.sh" }] }
-    ]
-  }
-}
-```
+그 외 강제 수단:
 
-`check-slice-boundary.sh`는 `file_path`가 `src/common/`·`src/shared/`면 `ask`를 반환해 사용자 승인 프롬프트를 띄우고, `HARNESS_SLICE`가 설정된 경우 `feature/{other}/`·`test/unit/{other}/`도 `ask`로 돌린다.
+| 대상 | 수단 |
+|---|---|
+| 슬라이스 간 import | `.eslintrc` 린트 룰 |
+| 실행 방법 일관성 | `package.json` 스크립트 고정 |
 
 #### 세션 쓰기 범위
 
@@ -197,20 +177,22 @@ front/src/feature/order-cancel/**       O
 backend/test/unit/order-cancel/**       O   (TDD)
 front/test/unit/order-cancel/**         O
 
-backend/src/common/**, shared/**        △   소프트 — 멈추고 보고, 승인 시 가능
+backend/src/common/**, shared/**        △   ask — 사용자 승인 시 가능
 front/src/common/**, shared/**          △
+e2e/**                                  △
+CLAUDE.md, package.json, .eslintrc,
+.claudeignore, .husky/**, .claude/**    △
 backend/src/feature/order-create/**     △   다른 슬라이스 (HARNESS_SLICE 설정 시 검사)
 
-backend/test/contract/**, e2e/**        X   하드
+backend/test/contract/**                X   deny — 세션 안에서 해제 불가
 front/test/contract/**                  X
-CLAUDE.md, package.json, .eslintrc,
-.claudeignore, .husky/**, .claude/**    X
 ```
 
 #### 남는 구멍
 
 - 계약 테스트 **삭제**·**이동**은 Edit/Write deny로 안 잡힌다. pre-commit은 `--name-only`라 삭제도 잡지만, settings로 막으려면 `Bash(rm *)`, `Bash(git rm *)`, `Bash(mv *)`도 deny해야 한다.
 - `npm run test`가 전체 테스트를 돌리면 다른 슬라이스의 깨진 테스트를 고치러 갈 수 있다. 자기 슬라이스 범위만 돌리는 스크립트(`test -- $HARNESS_SLICE`)를 두는 게 낫다.
+- `--dangerously-skip-permissions`로 세션을 열면 `ask`가 전부 무력화된다. 이 하네스에서는 쓰지 않는다.
 - settings·훅은 Claude Code 기준이다. 다른 에이전트를 쓰면 같은 규칙을 그 도구의 권한 체계로 옮겨야 하며, git hook과 린트만 도구 무관하게 동작한다.
 
 ---
