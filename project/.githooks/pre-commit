@@ -16,18 +16,24 @@ backend/src/shared/
 front/src/common/
 front/src/shared/
 CLAUDE.md
-package.json
-.eslintrc
+Makefile
 .claudeignore
-.husky/
+.githooks/
 .claude/
 "
+
+# project/ 가 레포 루트가 아닌 하위 폴더여도 동작하도록, 훅 위치 기준으로 프리픽스를 계산한다.
+PROJECT_DIR=$(cd "$(dirname "$0")/.." && pwd)
+REPO_ROOT=$(git rev-parse --show-toplevel)
+PREFIX=${PROJECT_DIR#"$REPO_ROOT"}
+PREFIX=${PREFIX#/}
+[ -n "$PREFIX" ] && PREFIX="$PREFIX/"
 
 STAGED=$(git diff --cached --name-only)
 
 match_paths() {
   for path in $1; do
-    echo "$STAGED" | grep "^$path" || true
+    echo "$STAGED" | grep "^$PREFIX$path" || true
   done
 }
 

@@ -6,7 +6,7 @@
   - `front/src/common/**`, `front/src/shared/**`
 - 다음 경로는 절대 수정하지 말 것. 통과하지 않으면 구현한 코드를 고치고, 명세와 불일치하면 멈추고 보고하라.
   - `backend/test/contract/**`, `front/test/contract/**`, `e2e/**`
-- 설정 파일(`CLAUDE.md`, `package.json`, `.eslintrc`, `.claudeignore`, `.husky/**`)은 절대 수정하지 말 것.
+- 설정 파일(`CLAUDE.md`, `Makefile`, `.claudeignore`, `.githooks/**`, `.claude/**`, 린트 설정)은 절대 수정하지 말 것.
 - `--no-verify`, `HARNESS_APPROVED=1` 등 커밋 훅을 우회하는 행위를 하지 말 것. `HARNESS_APPROVED`는 사용자만 쓴다.
 - 배정된 슬라이스 폴더 밖의 파일은 수정하지 말 것.
 - 다른 `feature/` 하위 폴더를 import하지 않는다. 의존 가능한 것은 `common/`과 `shared/`뿐이다.
@@ -29,9 +29,9 @@
 - `test/unit/{slice}/**`은 TDD 형식으로 작성·수정한다. 다른 슬라이스의 단위 테스트 폴더는 건드리지 않는다.
 
 ## 실행
-- 서버 기동: `npm run dev` (다른 방법으로 띄우지 말 것)
-- 단위·계약 테스트: `npm run test`
-- E2E: `npm run test:e2e` (슬라이스 완료 시에만)
+- 서버 기동: `make dev` (다른 방법으로 띄우지 말 것)
+- 단위·계약 테스트: `SLICE={슬라이스명} make test-slice` (자기 슬라이스만). 전체는 `make test`
+- E2E: `make test-e2e` (슬라이스 완료 시에만)
 
 ## 기타
 - 사용자가 루프를 언급할 때에는 명시적 스탑 평가 기준이 있는지 확인한다. 없다면 스탑 기준을 재질문한다.

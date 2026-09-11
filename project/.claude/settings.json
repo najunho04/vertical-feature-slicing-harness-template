@@ -4,7 +4,10 @@
       "Edit(backend/test/contract/**)",
       "Write(backend/test/contract/**)",
       "Edit(front/test/contract/**)",
-      "Write(front/test/contract/**)"
+      "Write(front/test/contract/**)",
+      "Bash(rm *contract*)",
+      "Bash(git rm *contract*)",
+      "Bash(mv *contract*)"
     ],
     "ask": [
       "Edit(e2e/**)",
@@ -18,10 +21,9 @@
       "Edit(front/src/shared/**)",
       "Write(front/src/shared/**)",
       "Edit(CLAUDE.md)",
-      "Edit(package.json)",
-      "Edit(.eslintrc)",
+      "Edit(Makefile)",
       "Edit(.claudeignore)",
-      "Edit(.husky/**)",
+      "Edit(.githooks/**)",
       "Edit(.claude/**)",
       "Bash(git commit --no-verify*)",
       "Bash(git commit -n *)",

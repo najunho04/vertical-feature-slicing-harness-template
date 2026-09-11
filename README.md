@@ -38,10 +38,9 @@
 
 /project                           # 레포 root (세션은 여기서 연다)
   CLAUDE.md                        # 자동 주입. 짧게 (쓰기 X)
-  package.json                     # dev / test / test:e2e (쓰기 X)
-  .eslintrc                        # 슬라이스 간 import 차단 (쓰기 X)
+  Makefile                         # dev / test / test-slice / test-e2e / lint 고정 (쓰기 X)
   .claudeignore                    # docs/generated 제외 (쓰기 X)
-  .husky/pre-commit                # 커밋 시점 경계 검사 (쓰기 X)
+  .githooks/pre-commit             # 커밋 시점 경계 검사 (쓰기 X)
   .claude/settings.json            # 툴 호출 시점 경계 검사: deny / ask (쓰기 X)
   /backend
     /src
@@ -139,12 +138,12 @@ API 계약 테스트가 타입 공유의 빈자리를 메운다. 백엔드/프�
 
 ### 기계적 강제
 
-`CLAUDE.md`는 강제력이 없다. 실제로 막으려면 따로 장치가 필요. 경계는 **두 등급**으로 나뉘고, 툴 호출 시점(`.claude/settings.json`)과 커밋 시점(`.husky/pre-commit`)에서 같은 등급으로 막는다.
+`CLAUDE.md`는 강제력이 없다. 실제로 막으려면 따로 장치가 필요. 경계는 **두 등급**으로 나뉘고, 툴 호출 시점(`.claude/settings.json`)과 커밋 시점(`.githooks/pre-commit`)에서 같은 등급으로 막는다.
 
 | 등급 | 경로 | 툴 호출 시점 | 커밋 시점 | 해제 |
 |---|---|---|---|---|
 | **하드** | `test/contract/` | `permissions.deny` — 프롬프트 없이 거부 | `exit 2` — 항상 차단 | 없음. 사람이 세션·훅 밖에서 처리 |
-| **소프트** | `src/common/`, `src/shared/`, `e2e/`, 설정 파일 (`CLAUDE.md`, `package.json`, `.eslintrc`, `.claudeignore`, `.husky/`, `.claude/`) | `permissions.ask` — 사용자 승인 프롬프트 | `exit 1` — `HARNESS_APPROVED=1`이면 통과 | 사용자가 프롬프트에서 승인 → `HARNESS_APPROVED=1 git commit` → `approvals.md` 기록 |
+| **소프트** | `src/common/`, `src/shared/`, `e2e/`, 설정 파일 (`CLAUDE.md`, `Makefile`, `.claudeignore`, `.githooks/`, `.claude/`) | `permissions.ask` — 사용자 승인 프롬프트 | `exit 1` — `HARNESS_APPROVED=1`이면 통과 | 사용자가 프롬프트에서 승인 → `HARNESS_APPROVED=1 git commit` → `approvals.md` 기록 |
 | (선택) | 다른 슬라이스 `feature/{other}/`, `test/unit/{other}/` | `PreToolUse` 훅 + `HARNESS_SLICE` | — | 미설정 시 검사 생략 |
 
 `deny`와 `ask`의 차이:
@@ -164,8 +163,9 @@ API 계약 테스트가 타입 공유의 빈자리를 메운다. 백엔드/프�
 
 | 대상 | 수단 |
 |---|---|
-| 슬라이스 간 import | `.eslintrc` 린트 룰 |
-| 실행 방법 일관성 | `package.json` 스크립트 고정 |
+| 계약 테스트 삭제·이동 | `Bash(rm/git rm/mv *contract*)` deny |
+| 슬라이스 간 import | 스택별 린트 룰 (아래 "스택 커스텀" 참고) |
+| 실행 방법 일관성 | `Makefile` 타겟 고정 |
 
 #### 세션 쓰기 범위
 
@@ -180,8 +180,8 @@ front/test/unit/order-cancel/**         O
 backend/src/common/**, shared/**        △   ask — 사용자 승인 시 가능
 front/src/common/**, shared/**          △
 e2e/**                                  △
-CLAUDE.md, package.json, .eslintrc,
-.claudeignore, .husky/**, .claude/**    △
+CLAUDE.md, Makefile, .claudeignore,
+.githooks/**, .claude/**                △
 backend/src/feature/order-create/**     △   다른 슬라이스 (HARNESS_SLICE 설정 시 검사)
 
 backend/test/contract/**                X   deny — 세션 안에서 해제 불가
@@ -190,8 +190,8 @@ front/test/contract/**                  X
 
 #### 남는 구멍
 
-- 계약 테스트 **삭제**·**이동**은 Edit/Write deny로 안 잡힌다. pre-commit은 `--name-only`라 삭제도 잡지만, settings로 막으려면 `Bash(rm *)`, `Bash(git rm *)`, `Bash(mv *)`도 deny해야 한다.
-- `npm run test`가 전체 테스트를 돌리면 다른 슬라이스의 깨진 테스트를 고치러 갈 수 있다. 자기 슬라이스 범위만 돌리는 스크립트(`test -- $HARNESS_SLICE`)를 두는 게 낫다.
+- `Bash(rm *contract*)` deny는 경로에 `contract`가 들어갈 때만 잡는다. `cd backend/test && rm -r contract`처럼 우회하면 못 잡는다. pre-commit이 삭제 diff를 잡으므로 커밋 시점에서는 걸린다.
+- `make test`가 전체 테스트를 돌리면 다른 슬라이스의 깨진 테스트를 고치러 갈 수 있다. 세션에는 `SLICE=… make test-slice`만 쓰게 한다 (CLAUDE.md에 명시됨).
 - `--dangerously-skip-permissions`로 세션을 열면 `ask`가 전부 무력화된다. 이 하네스에서는 쓰지 않는다.
 - settings·훅은 Claude Code 기준이다. 다른 에이전트를 쓰면 같은 규칙을 그 도구의 권한 체계로 옮겨야 하며, git hook과 린트만 도구 무관하게 동작한다.
 
@@ -236,12 +236,56 @@ front/test/contract/**                  X
 
 ## 템플릿 사용법
 
+0. clone 후 `project/`에서 `make setup` 1회 (git 훅 연결). 아래 "스택 커스텀"을 먼저 끝낸다.
 1. `project-all-docs/api.md`, `erd.md`, `feature-graph.md`를 작성한다. (사람)
 2. 도출된 엔티티·DTO·enum을 `project/backend/src/common/`, `project/front/src/common/`에 코드로 내려놓는다.
 3. 슬라이스마다 `project-all-docs/context-card/_template.md`를 복사해 카드를 작성한다. **빈칸이 남으면 설계가 덜 됐다는 신호.**
 4. `project/`에서 세션을 열고 `project/docs/prompts/test-session.md` 프롬프트 + 카드로 계약 테스트를 작성 → 승인 → 동결.
 5. `project/docs/prompts/implementation-session.md` 프롬프트 + 카드로 구현 세션을 연다.
 6. `project-all-docs/checklist.md`를 모두 통과하면 머지.
+
+---
+
+## 스택 커스텀
+
+하네스는 언어 무관이다. `CLAUDE.md`, `.claude/settings.json`, `.githooks/`, 디렉토리 구조, 컨텍스트 카드, 프롬프트는 그대로 쓴다. **스택에 맞춰 손대야 하는 건 세 곳**이다.
+
+| 파일 | 역할 | 해야 할 것 |
+|---|---|---|
+| `Makefile` | 실행 명령 고정 | 타겟 5개(`dev`, `test`, `test-slice`, `test-e2e`, `lint`)의 `TODO`를 실제 명령으로 교체. 타겟 이름은 바꾸지 않는다 (CLAUDE.md가 참조) |
+| 린트 설정 | 슬라이스 간 import 차단 | 스택별 도구로 `feature/{a}` → `feature/{b}` import를 에러로 만든다. `make lint`에 연결 |
+| `.githooks/pre-commit` | 경로 목록 | 디렉토리 구조를 바꿨다면 `HARD_PATHS`/`SOFT_PATHS` 갱신. 구조 그대로면 수정 불필요 |
+
+### 슬라이스 간 import 차단 — 스택별 수단
+
+| 스택 | 도구 | 규칙 예 |
+|---|---|---|
+| TypeScript / JS | `eslint` `no-restricted-imports` 또는 `eslint-plugin-boundaries` | `feature/*` 내부에서 `../*` 및 다른 `feature/*` 경로 금지 |
+| Java / Kotlin (Spring) | ArchUnit | `noClasses().that().resideInAPackage("..feature.(*)..").should().dependOnClassesThat().resideInAPackage("..feature..")` + 같은 슬라이스 예외 |
+| Python | `import-linter` | `[importlinter:contract:slices]` `type = independence` `modules = feature.*` |
+| Go | `depguard` 또는 internal 패키지 규칙 | `feature/{slice}/internal/` 구조로 컴파일러가 차단 |
+| Rust | 크레이트 분리 | 슬라이스를 별도 크레이트로 두면 `Cargo.toml`에 없는 의존은 컴파일 불가 |
+
+### `test-slice` 타겟
+
+병렬 세션에서 가장 자주 터지는 게 "전체 테스트 돌리다 남의 깨진 테스트를 고치러 가는" 경우다. `SLICE=order-cancel make test-slice`가 자기 슬라이스 테스트만 돌리도록 만든다:
+
+| 스택 | 예 |
+|---|---|
+| Jest / Vitest | `npx vitest run feature/$(SLICE) test/unit/$(SLICE)` |
+| Gradle | `./gradlew test --tests "*feature.$(SLICE)*"` |
+| pytest | `pytest backend/test/unit/$(SLICE) -k $(SLICE)` |
+| Go | `go test ./backend/feature/$(SLICE)/...` |
+
+### 계약 테스트 프레임워크
+
+`test/contract/`는 **백엔드 응답 형태**를 검증한다. 백엔드 테스트 프레임워크로 HTTP 호출 → 응답 DTO 필드·타입 검증. 프론트와 언어가 다르면 이 테스트가 타입 공유를 대신하므로, 응답 스키마 검증(JSON Schema, zod, Pydantic 등)을 넣는 게 좋다.
+
+### 손대지 않아도 되는 것
+
+- `.claude/settings.json` — 경로가 그대로면 그대로. Claude Code 외 에이전트를 쓰면 이 파일의 deny/ask를 그 도구의 권한 체계로 옮긴다.
+- `.githooks/pre-commit` — 순수 셸 스크립트. `make setup`이 `git config core.hooksPath .githooks`로 연결한다. husky 등 의존성 없음.
+- `.claudeignore`, `CLAUDE.md`, `docs/prompts/` — 스택 무관.
 
 ---
 
