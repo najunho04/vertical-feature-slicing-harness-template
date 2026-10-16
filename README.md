@@ -4,6 +4,38 @@
 
 이 레포는 **템플릿**입니다. `Use this template`으로 복제해서 씁니다.
 
+## 하네스 사용법 개요
+
+### 세션 2종류
+
+| 세션 | 여는 위치 | 용도 |
+|---|---|---|
+| 관리자 | 레포 최상위 | 카드·문서 작성, 공용 레이어 수정, 커밋 (`HARNESS_ADMIN=1`이라 pre-commit 통과) |
+| 작업 | `project/` | 테스트 세션, 구현 세션 (deny·ask·hook 전부 적용) |
+
+- 관리자 경로는 최상위 [`.claude/settings.json`](.claude/settings.json)의 `env.HARNESS_ADMIN=1`로 정해진다. `project/`에서 연 세션은 상위 settings를 읽지 않아서 이 값이 주입되지 않는다.
+- 최상위에는 `CLAUDE.md`를 두지 않는다. `project/` 세션이 상위 폴더의 CLAUDE.md까지 읽어서 관리자용 규칙이 섞이기 때문이다.
+
+### 슬라이스 1개 사이클
+
+1. **카드 확정** (관리자 세션) — `project-all-docs/context-card/{slice}.md`의 `{미정}`을 모두 채운다. [프롬프트 템플릿](project/docs/prompts/)에 카드를 붙여 `project-all-docs/prompts/{slice}-test-session.md`, `{slice}-implementation-session.md` 2개를 만든다.
+2. **테스트 세션** — `project/`에서 새 세션을 열고 `{slice}-test-session.md`를 붙여넣는다. 계약 테스트 3~7개가 나온다. 세션이 남긴 질문은 대개 카드가 모호하다는 뜻이니 카드도 함께 고친다.
+3. **승인 → 동결** (사람) — 테스트가 명세를 잘못 이해하지 않았는지 확인하고 `contract: {slice} 동결`로 커밋한다. **이 커밋부터 hook이 해당 슬라이스의 계약 테스트 수정을 막는다.**
+4. **구현 세션** — 테스트 세션과 다른 **새 세션**을 열고 `{slice}-implementation-session.md`를 붙여넣는다. TDD로 진행하고, 완료 기준은 `SLICE={slice} make test-slice`와 `make lint` 통과다.
+5. **완료 확인** (사람) — `git diff --stat`에 `test/contract/`가 없는지 보고, 화면을 직접 확인한 뒤 `feat({slice}): ...`로 커밋한다.
+
+### 계약·공용 레이어를 바꿔야 할 때
+
+구현 중에 명세가 틀렸거나 공용 타입이 부족하다고 판단되면, 관리자 세션에서 `common/`·카드·계약 테스트를 함께 고친다. 그다음 같은 타입을 쓰는 슬라이스를 확인하고 [`approvals.md`](project-all-docs/approvals.md)에 기록한다. → [운영 절차](#운영-절차)
+
+### 절대 하지 않는 것
+
+- 테스트 세션과 구현 세션을 한 세션에서 이어 하기. 같은 세션이면 명세를 잘못 이해한 부분을 걸러내지 못한다
+- 작업 세션이 직접 커밋하기. 커밋은 사람(또는 관리자 세션)만 한다
+- `--dangerously-skip-permissions` 쓰기. `ask`가 전부 무력화된다
+
+---
+
 ## 시작하기
 
 clone 직후 **이 두 가지를 먼저 확정**한다. 이걸 안 하면 세션이 실행 방법을 추측하고, import 경계가 안 막힌다.
@@ -19,14 +51,14 @@ cd project && make setup     # git 훅 연결. 1회
 
 **이게 스택 커스텀의 전부다.** 나머지(`CLAUDE.md`, `.claude/settings.json`, `.githooks/`, 디렉토리 구조)는 경로 기반이라 언어 무관. 스택별 예시는 [project/docs/stack-guide.md](project/docs/stack-guide.md).
 
-그 다음:
+선택: 작업 세션이 `project-all-docs/`를 아예 못 열게 하려면, `project/.claude/settings.json`의 `deny`에 clone한 위치의 절대경로로 `Read(//{절대경로}/project-all-docs/**)`, `Edit(...)`, `Write(...)`를 추가한다. 상위로 나가는 Bash(`cd ..`, `../`, `git -C ..`)는 기본으로 막혀 있다.
 
-1. `project-all-docs/`에 `api.md`, `erd.md`, `feature-graph.md` 작성 (사람)
-2. 도출된 엔티티·DTO·enum을 `project/*/src/common/`에 코드로 내려놓기
+그 다음 (관리자 세션 + 사람):
+
+1. `project-all-docs/`에 `api.md`, `erd.md`, `feature-graph.md` 작성
+2. 도출된 엔티티·DTO·enum을 `project/*/src/common/`에 코드로 내려놓기 (foundation). 공용 레이어라 계약 테스트 없이 관리자 세션에서 만들고 `approvals.md`에 기록
 3. 슬라이스마다 `project-all-docs/context-card/_template.md` 복사해 카드 작성. **빈칸이 남으면 설계가 덜 된 것**
-4. `project/`에서 세션 열기 → [`test-session.md`](project/docs/prompts/test-session.md) 프롬프트 + 카드로 계약 테스트 작성 → 승인 → 동결
-5. [`implementation-session.md`](project/docs/prompts/implementation-session.md) 프롬프트 + 카드로 구현 세션
-6. `project-all-docs/checklist.md` 전부 통과하면 머지
+4. 이후는 [슬라이스 1개 사이클](#슬라이스-1개-사이클)을 반복한다. 첫 슬라이스는 레퍼런스로 혼자 구현한다
 
 ---
 
@@ -49,10 +81,13 @@ cd project && make setup     # git 훅 연결. 1회
 ## 디렉토리 구조
 
 ```
-/project-all-docs                  # 세션 접근 X (총괄 문서, 사람만 읽음)
+/.claude/settings.json             # 관리자 경로: env.HARNESS_ADMIN=1 (최상위 세션만 적용)
+
+/project-all-docs                  # 작업 세션 접근 X (총괄 문서, 사람·관리자 세션용)
   /context-card                    # 슬라이스당 1장 → 프롬프트로 복사
     _template.md                   # 컨텍스트 카드 템플릿
     order-cancel.md                # 작성 예시
+  /prompts                         # 카드를 붙인 완성 프롬프트 ({slice}-test-session.md 등)
   api.md                           # 전체 API 명세
   erd.md                           # 전체 ERD
   feature-graph.md                 # 피쳐 의존 그래프
@@ -60,12 +95,13 @@ cd project && make setup     # git 훅 연결. 1회
   loop-config.md                   # 목표 지표 / 최대 반복 횟수
   approvals.md                     # 계약·공용 변경 승인 기록
 
-/project                           # 레포 root (세션은 여기서 연다)
+/project                           # 작업 세션은 여기서 연다
   CLAUDE.md                        # 자동 주입. 짧게 (쓰기 X)
   Makefile                         # dev / test / test-slice / test-e2e / lint 고정 (쓰기 X)
   .claudeignore                    # docs/generated 제외 (쓰기 X)
-  .githooks/pre-commit             # 커밋 시점 경계 검사 (쓰기 X)
-  .claude/settings.json            # 툴 호출 시점 경계 검사: deny / ask (쓰기 X)
+  .githooks/pre-commit             # 커밋 시점 경계 검사. HARNESS_ADMIN=1이면 통과 (쓰기 X)
+  .claude/settings.json            # 툴 호출 시점 경계 검사: deny / ask / hook (쓰기 X)
+  .claude/hooks/                   # 동결된 계약 테스트 수정 차단 hook (쓰기 X)
   /backend
     /src
       /common                      # 타입만. 로직 X (쓰기 X)
@@ -81,7 +117,8 @@ cd project && make setup     # git 훅 연결. 1회
       /feature
         /{slice}                   # 슬라이스별 (쓰기 O)
     /test
-      /contract                    # 컨텍스트 카드로 만든 TC. hook으로 수정 차단
+      /contract
+        /{slice}                   # 컨텍스트 카드로 만든 TC. 커밋되면 hook이 수정 차단
       /unit
         /{slice}                 # 세션이 TDD로 작성. 자기 슬라이스 폴더만 (쓰기 O)
   /front                           # backend 폴더와 구조 동일
@@ -101,13 +138,13 @@ cd project && make setup     # git 훅 연결. 1회
   /e2e                             # 통합 테스트. 동결 (쓰기 X)
   /docs
     /generated                     # OpenAPI·ERD 생성물 (claudeignore 대상)
-    /prompts                       # 테스트 세션 / 구현 세션 프롬프트 템플릿
+    /prompts                       # 테스트 세션 / 구현 세션 프롬프트 템플릿 (카드 붙이기 전)
     stack-guide.md                 # 스택별 Makefile·린트 예시
 ```
 
 **핵심은 두 가지.** `common/`·`shared/`는 세션 쓰기 금지, `test/contract/`는 실구현 전에 컨텍스트 카드를 보고 승인 후 동결. 나머지는 프로젝트에 맞게 조정.
 
-- `project-all-docs/`는 원래 **레포 밖**에 두는 것이 원칙이다. 이 템플릿에서는 편의상 같은 레포의 형제 폴더로 두었으며, 세션은 반드시 `project/`에서 연다. 동기화가 필요할 때만 최상위(real-root)에서 새 세션을 연다.
+- `project-all-docs/`는 원래 **레포 밖**에 두는 것이 원칙이다. 이 템플릿에서는 편의상 같은 레포의 형제 폴더로 두었으며, 작업 세션은 반드시 `project/`에서 연다. 카드·문서 작성과 동기화는 최상위에서 연 관리자 세션이 한다.
 - `docs/`는 사람용이라 세션에 통째로 들어가지 않는다. **세션은 프롬프트로 컨텍스트 카드만 제공받는다.**
 
 ---
@@ -117,7 +154,7 @@ cd project && make setup     # git 훅 연결. 1회
 1. **피쳐 함수 단위 설계** — 세로 슬라이스 분해, I/O 확정, 공용 레이어와 구현 순서 결정 (사람)
 2. **API · ERD 문서화** — 사람이 조망하는 용도. 여기서 나온 타입/DTO/enum은 `common/`에 코드로 내려놓음
 3. **의존 그래프** — 순서·병렬 묶음 정리. 시각화는 사람용, 상하류 한 줄은 세션 프롬프트로
-4. **테스트 세션** — 깨끗한 세션이 명세만 보고 계약 테스트 작성 → 사람 승인 → 동결
+4. **테스트 세션** — 깨끗한 세션이 명세만 보고 계약 테스트 작성 → 사람 승인 → 커밋으로 동결
 5. **구현 세션** — 피쳐별 세션. 의존 없는 것끼리 병렬 (1인 기준 동시 2~3개 상한)
 6. **루프 엔지니어링** — 슬라이스별 1회 + 통합 후 1회
 7. **E2E + 육안 확인** — 슬라이스 완료 게이트
@@ -163,14 +200,17 @@ API 계약 테스트가 타입 공유의 빈자리를 메운다. 백엔드/프�
 
 ### 기계적 강제
 
-`CLAUDE.md`는 강제력이 없다. 실제 차단은 두 지점, 두 등급.
+`CLAUDE.md`는 강제력이 없다. 실제 차단은 두 지점, 두 등급. 관리자 세션(`HARNESS_ADMIN=1`)은 pre-commit을 건너뛴다.
 
 | 등급 | 경로 | 툴 호출 시점 ([`.claude/settings.json`](project/.claude/settings.json)) | 커밋 시점 ([`.githooks/pre-commit`](project/.githooks/pre-commit)) |
 |---|---|---|---|
-| **하드** | `test/contract/` | `deny` — 프롬프트 없이 거부. 삭제·이동(`rm`/`mv`)도 거부 | 항상 차단. 해제 없음 |
+| **하드** | `test/contract/` | 커밋된 슬라이스는 **hook**([`protect-frozen-contract.py`](project/.claude/hooks/protect-frozen-contract.py))이 Edit/Write 거부. 삭제·이동(`rm`/`mv`)은 `deny` | 항상 차단. `HARNESS_APPROVED`로도 안 풀림 → 사람이 `--no-verify` 또는 관리자 세션에서 커밋 |
 | **소프트** | `src/common/`, `src/shared/`, `e2e/`, 설정 파일 | `ask` — 사용자 승인 프롬프트 | 차단. `HARNESS_APPROVED=1 git commit`이면 통과 → `approvals.md` 기록 |
 
 - 계약 테스트만 하드인 이유: 채점 기준이라 세션 안에서 풀리면 "동결"이 아니게 된다.
+- 동결 기준이 `deny`가 아니라 **git 커밋**인 이유: 테스트 세션과 구현 세션은 같은 settings를 쓴다. `deny`로 막으면 테스트 세션도 못 쓰고, 켜고 끄는 걸 사람이 매번 해야 한다. hook은 `test/contract/{slice}/`에 git이 추적하는 파일이 하나라도 있으면 그 슬라이스를 막으므로 따로 켜고 끌 게 없다.
+- hook은 Edit/Write만 본다. Bash(`sed -i` 등)로 고치면 못 잡으니 pre-commit 하드 차단과 구현 후 `git diff --stat`으로 확인한다. hook·settings 변경은 새 세션부터 적용된다.
+- 작업 세션은 상위 폴더로 나가는 Bash(`cd ..`, `../`, `git -C ..`)와 `HARNESS_ADMIN`을 포함한 명령이 `deny`다. 문자열 패턴 검사라 완전한 차단은 아니지만, 시도하면 diff에 드러난다.
 - 나머지가 소프트인 이유: DTO 필드 추가 같은 공용 변경은 실제로 필요해진다. 막되 사람이 풀 수 있어야 한다.
 - 훅 우회(`--no-verify`, `HARNESS_APPROVED=`)도 `ask`. 세션이 시도하면 사용자에게 보인다.
 - `--dangerously-skip-permissions`는 `ask`를 전부 무력화하므로 쓰지 않는다.
@@ -182,7 +222,8 @@ API 계약 테스트가 타입 공유의 빈자리를 메운다. 백엔드/프�
 feature/order-cancel/**, test/unit/order-cancel/**   O
 src/common/**, src/shared/**, e2e/**, 설정 파일        △  ask
 feature/order-create/** (다른 슬라이스)                △  HARNESS_SLICE 설정 시 검사 (선택)
-test/contract/**                                     X  deny
+test/contract/{slice}/** (커밋 전, 테스트 세션)      O  테스트 세션 프롬프트로만
+test/contract/{slice}/** (커밋 후)                   X  hook
 ```
 
 ---
@@ -212,15 +253,15 @@ test/contract/**                                     X  deny
 
 ## 운영 절차
 
-**브랜치** — 슬라이스당 브랜치 1개, 순차 머지. 병렬 세션이 같은 브랜치에서 작업하면 서로 덮어쓴다.
+**브랜치** — 슬라이스를 하나씩 순차로 진행하면 main에 바로 커밋해도 된다 (`contract: {slice} 동결` → `feat({slice}): ...`). 병렬로 돌릴 때만 슬라이스당 worktree·브랜치 1개를 두고 순차 머지한다. 병렬 세션이 같은 작업 트리에서 작업하면 서로 덮어쓴다.
 
 **계약 변경 요청 처리** — 세션이 "공용 레이어 변경 필요"를 보고했을 때
 
-1. 사람이 판단
-2. 공용 타입 수정
+1. 사람이 판단 — 카드가 틀렸는지, 공용 타입이 부족한지
+2. 관리자 세션에서 공용 타입·카드·(필요하면) 계약 테스트를 함께 수정
 3. **같은 타입 쓰는 다른 슬라이스 확인**
 4. 끝난 슬라이스면 재작업 여부 결정
-5. 컨텍스트 카드 갱신 후 세션 재개 (`project-all-docs/approvals.md`에 기록)
+5. `project-all-docs/approvals.md`에 기록 후 세션 재개
 
 ---
 

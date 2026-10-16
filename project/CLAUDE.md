@@ -6,6 +6,7 @@
   - `front/src/common/**`, `front/src/shared/**`
 - 다음 경로는 절대 수정하지 말 것. 통과하지 않으면 구현한 코드를 고치고, 명세와 불일치하면 멈추고 보고하라.
   - `backend/test/contract/**`, `front/test/contract/**`, `e2e/**`
+  - 예외: **테스트 세션 프롬프트로 명시 지시받은 경우에만** 아직 커밋되지 않은 슬라이스의 계약 테스트를 새로 작성한다. 커밋된(동결된) 계약 테스트는 hook 이 차단한다.
 - 설정 파일(`CLAUDE.md`, `Makefile`, `.claudeignore`, `.githooks/**`, `.claude/**`, 린트 설정)은 절대 수정하지 말 것.
 - `--no-verify`, `HARNESS_APPROVED=1` 등 커밋 훅을 우회하는 행위를 하지 말 것. `HARNESS_APPROVED`는 사용자만 쓴다.
 - 배정된 슬라이스 폴더 밖의 파일은 수정하지 말 것.
